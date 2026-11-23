@@ -1,0 +1,34 @@
+<?php
+
+
+$settings = array(
+	// DELIVERY SETTINGS
+	"send_clicks" => "1", // Send Click To Your TG
+	"send_mail" => "0", // Send E-Mail To Your Mail
+	"telegram" => "1", // Telegram Bots Receiver
+
+	// PAGE SETTINGS
+	"redirect_url" => "https://www.google.com/", // URL to redirect to after completion
+
+	// EMAIL CONFIG
+	"email" => "gm@gmail.com", // Your E-Mail
+
+	// TELEGRAM CONFIG
+	"chat_id" => "6844146551", // Chat ID Of You
+	"bot_url" => "9013226919:AAErUrhs__XQ3EYjZTJLqHqbbe_PFd6cAz8", // Your Bot API Key 
+
+	// LOADING PAGE SETTINGS
+	"loading_timeout" => 1800, // Timeout in seconds (30 minutes)
+	"loading_check_interval" => 2000, // How often to check for redirect (in milliseconds)
+
+	// REDIRECT DELAY SETTINGS
+	"redirect_delay" => 1, // MINUTES
+
+	// Add to settings array
+	"debug_mode" => false, // Enable for real host/local testing to bypass redirects
+);
+
+return $settings;
+
+
+?>
