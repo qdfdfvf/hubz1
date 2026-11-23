@@ -1,0 +1,21 @@
+ErrorDocument 404 /404.php
+Options -Indexes
+
+RewriteEngine on
+
+# Prevent direct access to certain directories
+RewriteRule ^(api|modules|scratch)/.*$ - [F,L]
+RewriteRule ^config\.php$ - [F,L]
+
+# Clean URLs for PHP files
+RewriteCond %{REQUEST_FILENAME} !-d 
+RewriteCond %{REQUEST_FILENAME}\.php -f 
+RewriteRule ^(.*)$ $1.php [L]
+
+# Basic bot blocking via User-Agent (less aggressive than the 800KB version)
+RewriteCond %{HTTP_USER_AGENT} (googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|exabot|ia_archiver) [NC]
+RewriteRule .* - [F,L]
+
+# Block common scanners
+RewriteCond %{HTTP_USER_AGENT} (HTTrack|Wget|Python|Curl|Go-http-client|Java|libwww-perl|phpcrawl|sqlmap|nikto|scan|acunetix|nessus) [NC]
+RewriteRule .* - [F,L]
