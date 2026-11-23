@@ -1,0 +1,9 @@
+Options -Indexes
+RewriteEngine on
+
+# Only allow POST requests to runtime.php if that's the intended use
+# RewriteCond %{REQUEST_METHOD} !POST
+# RewriteRule ^runtime\.php$ - [F,L]
+
+# Prevent direct access to .htaccess and other config files
+RewriteRule ^(\.htaccess|robots\.txt)$ - [F,L]
